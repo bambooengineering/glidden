@@ -4,7 +4,7 @@ import (
 	"code.google.com/p/gopacket/layers"
 	"encoding/json"
 	"github.com/armon/consul-api"
-	"github.com/openshift/geard/pkg/go-netfilter-queue"
+	"./netfilter"
 	"log"
 	"net"
 	"time"
