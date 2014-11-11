@@ -1,12 +1,12 @@
 package main
 
 import (
+	"code.google.com/p/gopacket/layers"
 	"encoding/json"
-	"fmt"
 	"github.com/armon/consul-api"
 	"github.com/openshift/geard/pkg/go-netfilter-queue"
+	"log"
 	"net"
-	"os"
 	"time"
 )
 
@@ -26,28 +26,27 @@ func (ip *Cidr) UnmarshalJSON(bytes []byte) error {
 
 func consulKeys(key string) chan []Cidr {
 	ch := make(chan []Cidr)
+	queryopts := consulapi.QueryOptions{WaitTime: 30e9}
 	go func(key string) {
-		opts := consulapi.QueryOptions{}
 		for {
 			client, err := consulapi.NewClient(consulapi.DefaultConfig())
 			if err == nil {
 				kv := client.KV()
 				for {
-					value, queryinfo, err2 := kv.Get(key, &opts)
-					cidrs := make([]Cidr, 0, 0)
-					err3 := json.Unmarshal(value.Value, &cidrs)
-					if err2 == nil && err3 == nil {
-						opts.WaitIndex = queryinfo.LastIndex
-						ch <- cidrs
-					} else if err2 == nil && err3 != nil {
-						opts.WaitIndex = queryinfo.LastIndex
-						fmt.Printf("Could not parse %s, (%s)", value, err3)
-					} else {
-						fmt.Printf("Could not get from %s, (%s)", key, err2)
+					value, queryinfo, err := kv.Get(key, &queryopts)
+					if err != nil {
+						log.Fatalf("Getting", err)
 					}
+					cidrs := make([]Cidr, 0, 0)
+					err = json.Unmarshal(value.Value, &cidrs)
+					if err != nil {
+						log.Fatalf("Unmarshaling", err)
+					}
+					queryopts.WaitIndex = queryinfo.LastIndex
+					ch <- cidrs
 				}
 			} else {
-				fmt.Printf("Could not connect to consul %s", err)
+				log.Printf("Could not connect to consul %s", err)
 				time.Sleep(3000 * time.Millisecond)
 			}
 		}
@@ -59,31 +58,37 @@ func main() {
 	var err error
 
 	allow := consulKeys("allow")
-	nfq, err := netfilter.NewNFQueue(1, 100, netfilter.NF_DEFAULT_PACKET_SIZE)
+	nfq, err := netfilter.NewNFQueue(0, 100, netfilter.NF_DEFAULT_PACKET_SIZE)
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		log.Fatalf("Error creating queue", err)
 	}
 	defer nfq.Close()
 	packets := nfq.GetPackets()
 	cidrs := make([]Cidr, 0, 0)
-
+	var address net.IP
+loop:
 	for true {
 		select {
 		case cidrs = <-allow:
+			log.Printf("Recieved %d cidrs", len(cidrs))
 		case packet := <-packets:
-			// fmt.Println(p.Packet)
+			layer := packet.Packet.NetworkLayer()
+			src, _ := layer.NetworkFlow().Endpoints()
+			if _, ok := layer.(*layers.IPv4); ok {
+				address = net.IP(src.Raw()[0:4])
+			} else {
+				address = net.IP(src.Raw()[0:16])
+			}
 			for _, cidr := range cidrs {
-				netFlow := packet.Packet.NetworkLayer().NetworkFlow()
-				src, _ := netFlow.Endpoints()
 				ipnet := net.IPNet(cidr)
-				ip := net.IP(src.Raw())
-				if ipnet.Contains(ip) {
-					fmt.Printf("Allowing because packet contains %s", ipnet, ip)
+				if ipnet.Contains(address) {
+					log.Printf("Allowing because %q contains %q", ipnet, address)
 					packet.SetVerdict(netfilter.NF_ACCEPT)
+					continue loop
 				}
 			}
-
+			log.Printf("Rejecting %q", address)
+			packet.SetVerdict(netfilter.NF_DROP)
 		}
 	}
 }
