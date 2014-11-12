@@ -2,7 +2,9 @@
 
 Uses nfqueue and consul to dynamically filter connections. 
 
-NFQueue is an Linux/IPTables feature which allows the decision on which packets to be accepted to be made by userspace applications. In glidden, we subscribe to a consul key, in which we expect to find a set of CIDRs. If the packets we recieve from the kernel falls into one of these CIDRs, we allow it though. In glidden, we only inspect the first packet in a connection, so as to reduce performance requirements- if the first packet is allowed through, all the following packets will be allowed through (using the IPTables conntrack feature) You can at any time change the set of allowed CIDRs, and through the consul subscription, glidden will allow and disallow packets as you please. 
+NFQueue is an Linux/IPTables feature which allows the decision on which packets to be accepted to be made by userspace applications. 
+
+In Glidden, we get a set of CIDRs from consul. If the packets we recieve from the kernel falls into one of these CIDRs, we allow it through. We dynamically update the consul key and enable and disable ip addresses- however, we only inspect the first packet in a connection, so as to reduce performance requirements- if the first packet is permitted, all the following packets will be allowed through (using the IPTables conntrack feature)
 
 ## To use, run
 
