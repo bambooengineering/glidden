@@ -1,10 +1,10 @@
 package main
 
 import (
+	"./netfilter"
 	"code.google.com/p/gopacket/layers"
 	"encoding/json"
 	"github.com/armon/consul-api"
-	"./netfilter"
 	"log"
 	"net"
 	"time"
@@ -28,21 +28,31 @@ func consulKeys(key string) chan []Cidr {
 	ch := make(chan []Cidr)
 	queryopts := consulapi.QueryOptions{WaitTime: 30e9}
 	go func(key string) {
+	connecting:
 		for {
 			client, err := consulapi.NewClient(consulapi.DefaultConfig())
 			if err == nil {
 				kv := client.KV()
+			looking:
 				for {
 					value, queryinfo, err := kv.Get(key, &queryopts)
 					if err != nil {
-						log.Fatalf("Getting", err)
+						log.Println("Error connecting")
+						time.Sleep(1e9)
+						continue connecting
+					}
+					queryopts.WaitIndex = queryinfo.LastIndex
+					if value == nil || string(value.Value) == "" {
+						log.Println("Bad consul value", value)
+						continue looking
 					}
 					cidrs := make([]Cidr, 0, 0)
 					err = json.Unmarshal(value.Value, &cidrs)
 					if err != nil {
-						log.Fatalf("Unmarshaling", err)
+						log.Printf("Consul value %q not json: %q", value, err)
+						continue looking
 					}
-					queryopts.WaitIndex = queryinfo.LastIndex
+
 					ch <- cidrs
 				}
 			} else {
