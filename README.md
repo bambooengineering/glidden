@@ -6,9 +6,8 @@ NFQueue is an Linux/IPTables feature which allows the decision on which packets 
 
 In Glidden, we get a set of CIDRs from consul. If the packets we recieve from the kernel falls into one of these CIDRs, we allow it through. We dynamically update the consul key and enable and disable ip addresses- however, we only inspect the first packet in a connection, so as to reduce performance requirements- if the first packet is permitted, all the following packets will be allowed through (using the IPTables conntrack feature)
 
-## To use, run
+## Usage
 
-Use 
 ````bash
 glidden-client -allow="10.0.0.0/8,127.0.0.1/24"
 sudo iptables -I INPUT -i eth0 -m conntrack --ctstate NEW -j NFQUEUE --queue-num 0
