@@ -9,7 +9,9 @@ In Glidden, we get a set of CIDRs from consul. If the packets we recieve from th
 ## Usage
 
 ````bash
+# Allow 10.0.0.0/8 and 127.0.0.0/24
 glidden-client -allow="10.0.0.0/8,127.0.0.1/24"
+# Setup packet link to userspace
 sudo iptables -I INPUT -i eth0 -m conntrack --ctstate NEW -j NFQUEUE --queue-num 0
 sudo glidden
 ````
